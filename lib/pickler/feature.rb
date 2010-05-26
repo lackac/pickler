@@ -1,3 +1,5 @@
+require 'pathname'
+
 class Pickler
   class Feature
     URL_REGEX = %r{\bhttps?://www\.pivotaltracker\.com/\S*/(\d+)\b}
@@ -67,8 +69,13 @@ class Pickler
       id || local_body =~ %r{\A(?:#\s*|@[[:punct:]]?(?:https?://www\.pivotaltracker\.com/story/new)?[[:punct:]]?(?:\s+@\S+)*\s*)\n[[:upper:]][[:lower:]]+:} ? true : false
     end
 
-    def push
+    def push(github_url=nil)
       body = local_body
+      if github_url
+        body.sub!(/\n[ \t]*\n\s*(?:@\S+\s+)*(?:Scenario|Background):.*\z/m, '')
+        relative_path = Pathname.new(filename).realpath.relative_path_from(Pathname.new(pickler.directory))
+        body += "\n\n#{github_url}/#{relative_path}#path\n"
+      end
       if story
         return if story.to_s(pickler.format) == body.to_s
         story.to_s = body
@@ -80,11 +87,14 @@ class Pickler
         story = pickler.new_story
         story.to_s = body
         @story = story.save!
+        body = local_body
         unless body.sub!(%r{\bhttps?://www\.pivotaltracker\.com/story/new\b}, story.url)
           body.sub!(/\A(?:#.*\n)?/,"# #{story.url}\n")
         end
         File.open(filename,'w') {|f| f.write body}
       end
+    rescue
+      $stderr.puts "Error with #{relative_path || filename}:\n  #{$!}"
     end
 
     def finish

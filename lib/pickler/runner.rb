@@ -302,10 +302,24 @@ first line.  Features with a blank comment in the first line will created as
 new stories.
       EOF
 
+      on "-g", "--github[=URL]", "push github url instead of scenarios" do |url|
+        url ||= begin
+          origin, branch = Dir.chdir(pickler.directory) do
+            origin = %x{git remote show origin}
+            branch = %x{git branch}[%r{\* (\S+)}, 1]
+            branch = "master" unless origin =~ %r{^    #{branch}\s+tracked}
+            [origin[%r{git@(github.com:[^/]+/[^\.]+)\.git}, 1], branch]
+          end
+          "http://#{origin.sub(':', '/')}/blob/#{branch}"
+        end
+        puts "Using GitHub url #{url.inspect}"
+        @github_url = url
+      end
+
       process do |*args|
         args.replace(pickler.local_features) if args.empty?
         args.each do |arg|
-          pickler.feature(arg).push
+          pickler.feature(arg).push(@github_url)
         end
       end
     end
