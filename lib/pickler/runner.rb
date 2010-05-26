@@ -299,18 +299,33 @@ class Pickler
       description <<-EOF
 Upload the given story or all features with a tracker url in a comment on the
 first line.  Features with a blank comment in the first line will created as
-new stories.
+new stories.  Using the -g flag with a remote name instead of an url will use
+the url of that remote to build the GitHub urls.  You can even specify the branch
+name with a comma.
       EOF
 
       on "-g", "--github[=URL]", "push github url instead of scenarios" do |url|
-        url ||= begin
-          origin, branch = Dir.chdir(pickler.directory) do
-            origin = %x{git remote show origin}
-            branch = %x{git branch}[%r{\* (\S+)}, 1]
-            branch = "master" unless origin =~ %r{^    #{branch}\s+tracked}
-            [origin[%r{git@(github.com:[^/]+/[^\.]+)\.git}, 1], branch]
+        remotes = %x{git remote -v show -n | grep git@github}.split("\n").inject({}) do |hash,line|
+          remote, remote_url = line.split("\t")
+          remote_url.sub!(/ .*/, '')
+          hash[remote] = remote_url
+          hash
+        end
+        unless url and url =~ /^https?:/
+          remote, branch = (url || "origin").split(",")
+          remote = remotes[remote]
+          unless remote
+            $stderr.puts "Wrong GitHub url and couldn't determine one."
+            exit 1
           end
-          "http://#{origin.sub(':', '/')}/blob/#{branch}"
+          branch ||= Dir.chdir(pickler.directory) do
+            remote_info = %x{git remote show #{remote}}
+            branch = %x{git branch}[%r{\* (\S+)}, 1]
+            branch = "master" unless remote_info =~ %r{^    #{branch}\s+tracked}
+            branch
+          end
+          remote.sub!(%r{git@github.com:([^/]+/[^\.]+)\.git}, 'github.com/\1')
+          url = "http://#{remote}/blob/#{branch}"
         end
         puts "Using GitHub url #{url.inspect}"
         @github_url = url
